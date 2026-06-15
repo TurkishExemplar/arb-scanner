@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arb Scanner Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:#0a0e1a; --surface:#111827; --surface2:#1a2332; --border:#1e2d45;
+    --accent:#00d4aa; --accent2:#3b82f6; --warn:#f59e0b; --text:#e2e8f0; --muted:#64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'SF Mono','Fira Code',monospace;min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;justify-content:space-between}
+  .logo{display:flex;align-items:center;gap:12px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  h1{font-size:16px;letter-spacing:2px;font-weight:600}
+  .last-update{font-size:12px;color:var(--muted)}
+  main{padding:24px 32px;max-width:1400px;margin:0 auto}
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;position:relative;overflow:hidden}
+  .stat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent)}
+  .stat-card.warn::before{background:var(--warn)}
+  .stat-card.blue::before{background:var(--accent2)}
+  .stat-card.green::before{background:#22c55e}
+  .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .stat-value{font-size:28px;font-weight:700}
+  .stat-sub{font-size:11px;color:var(--muted);margin-top:4px}
+  .pnl-grid{margin-bottom:24px}
+  .pnl-head{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .pnl-mode{font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);color:var(--muted)}
+  .pnl-mode.live{color:#22c55e;border-color:rgba(34,197,94,.4)}
+  .pnl-mode.dry{color:var(--warn);border-color:rgba(245,158,11,.4)}
+  .pnl-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .profit-pos{color:#22c55e}.profit-neg{color:#ef4444}
+  .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px}
+  .chart-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
+  .chart-wrap{position:relative;height:200px}
+  .table-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:24px}
+  .table-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .filter-row{display:flex;gap:8px}
+  .filter-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;font-family:inherit;letter-spacing:1px;text-transform:uppercase;transition:all .15s}
+  .filter-btn.active,.filter-btn:hover{border-color:var(--accent);color:var(--accent)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;padding:8px 12px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--border);font-weight:500}
+  td{padding:10px 12px;border-bottom:1px solid #0d1729;vertical-align:middle}
+  tr:hover td{background:var(--surface2)}
+  tr:last-child td{border-bottom:none}
+  .edge-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700}
+  .edge-high{background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3)}
+  .edge-mid{background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.3)}
+  .edge-low{background:rgba(100,116,139,.15);color:#94a3b8;border:1px solid rgba(100,116,139,.2)}
+  .platform-tag{background:rgba(59,130,246,.12);color:#60a5fa;border:1px solid rgba(59,130,246,.25);padding:2px 6px;border-radius:3px;font-size:10px;white-space:nowrap}
+  .question-text{color:var(--text);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .price-cell{font-family:monospace;color:var(--accent)}
+  .ts-cell{color:var(--muted);font-size:11px}
+  .empty-state{text-align:center;padding:60px 0;color:var(--muted)}
+  .empty-state p{margin-top:8px;font-size:13px;line-height:1.8}
+  .refresh-btn{background:none;border:1px solid var(--accent);color:var(--accent);padding:6px 14px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:1px;text-transform:uppercase;transition:all .15s}
+  .refresh-btn:hover{background:rgba(0,212,170,.1)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="dot"></div>
+    <h1>ARB SCANNER DASHBOARD</h1>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <span class="last-update" id="lastUpdate">Loading...</span>
+    <button class="refresh-btn" onclick="loadAll()">&#8635; REFRESH</button>
+  </div>
+</header>
+<main>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Opportunities</div>
+      <div class="stat-value" id="statTotal">—</div>
+      <div class="stat-sub">logged events</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-label">Avg Edge</div>
+      <div class="stat-value" id="statAvg">—</div>
+      <div class="stat-sub">percent spread</div>
+    </div>
+    <div class="stat-card blue">
+      <div class="stat-label">Best Edge Found</div>
+      <div class="stat-value" id="statBest">—</div>
+      <div class="stat-sub">single opportunity</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Total Potential</div>
+      <div class="stat-value" id="statPotential">—</div>
+      <div class="stat-sub">est. deployable $</div>
+    </div>
+  </div>
+  <div class="pnl-grid">
+    <div class="pnl-head">P&amp;L Tracking <span class="pnl-mode" id="pnlMode"></span></div>
+    <div class="pnl-cards">
+      <div class="stat-card blue">
+        <div class="stat-label">Total Deployed</div>
+        <div class="stat-value" id="pnlDeployed">—</div>
+        <div class="stat-sub">entry cost, all trades</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Total Profit</div>
+        <div class="stat-value" id="pnlProfit">—</div>
+        <div class="stat-sub" id="pnlTrades">— trades</div>
+      </div>
+      <div class="stat-card warn">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value" id="pnlWin">—</div>
+        <div class="stat-sub">profitable trades</div>
+      </div>
+    </div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">Opportunities Over Time</div>
+      <div class="chart-wrap"><canvas id="timeChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Edge Distribution</div>
+      <div class="chart-wrap"><canvas id="edgeChart"></canvas></div>
+    </div>
+  </div>
+  <div class="table-card">
+    <div class="table-header">
+      <div class="chart-title" style="margin:0">Recent Opportunities</div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+        <button class="filter-btn" onclick="setFilter('high',this)">5%+ Edge</button>
+        <button class="filter-btn" onclick="setFilter('true',this)">True Arb</button>
+      </div>
+    </div>
+    <div id="tableWrap"></div>
+  </div>
+</main>
+<script>
+let allOpps=[], currentFilter='all', timeChart, edgeChart;
+const CD={
+  plugins:{legend:{display:false},tooltip:{backgroundColor:'#1a2332',borderColor:'#1e2d45',borderWidth:1,titleColor:'#e2e8f0',bodyColor:'#94a3b8',padding:10}},
+  scales:{x:{grid:{color:'#1e2d45'},ticks:{color:'#64748b',font:{size:10}}},y:{grid:{color:'#1e2d45'},ticks:{color:'#64748b',font:{size:10}}}}
+};
+async function loadAll(){
+  try{
+    const [s,o,p]=await Promise.all([fetch('/api/stats').then(r=>r.json()),fetch('/api/opportunities').then(r=>r.json()),fetch('/api/pnl').then(r=>r.json())]);
+    allOpps=o; updateStats(s); updatePnl(p); updateCharts(s,o); renderTable();
+    document.getElementById('lastUpdate').textContent='Updated '+new Date().toLocaleTimeString();
+  }catch(e){document.getElementById('lastUpdate').textContent='Error loading data';}
+}
+function updateStats(s){
+  document.getElementById('statTotal').textContent=s.total||0;
+  document.getElementById('statAvg').textContent=s.avg_edge?s.avg_edge+'%':'—';
+  document.getElementById('statBest').textContent=s.best_edge?s.best_edge+'%':'—';
+  document.getElementById('statPotential').textContent=s.total_potential?'$'+Math.round(s.total_potential).toLocaleString():'—';
+}
+function updatePnl(p){
+  document.getElementById('pnlDeployed').textContent=p.trades?'$'+Math.round(p.total_deployed).toLocaleString():'—';
+  const profEl=document.getElementById('pnlProfit');
+  if(p.trades){const v=p.total_profit;profEl.textContent=(v>=0?'+$':'-$')+Math.abs(v).toLocaleString(undefined,{maximumFractionDigits:0});profEl.className='stat-value '+(v>=0?'profit-pos':'profit-neg');}
+  else{profEl.textContent='—';profEl.className='stat-value';}
+  document.getElementById('pnlTrades').textContent=(p.trades||0)+' trade'+(p.trades===1?'':'s');
+  document.getElementById('pnlWin').textContent=p.trades?p.win_rate+'%':'—';
+  const mode=document.getElementById('pnlMode');
+  if(p.live>0){mode.textContent='LIVE';mode.className='pnl-mode live';}
+  else if(p.dry_run>0){mode.textContent='DRY RUN';mode.className='pnl-mode dry';}
+  else{mode.textContent='';mode.className='pnl-mode';}
+}
+function updateCharts(stats,opps){
+  const bh=stats.by_hour||{};
+  if(timeChart)timeChart.destroy();
+  timeChart=new Chart(document.getElementById('timeChart').getContext('2d'),{
+    type:'bar',
+    data:{labels:Object.keys(bh).map(h=>h.slice(11)+':00'),datasets:[{data:Object.values(bh),backgroundColor:'rgba(0,212,170,0.25)',borderColor:'#00d4aa',borderWidth:1,borderRadius:3}]},
+    options:{...CD,maintainAspectRatio:false}
+  });
+  const buckets={'0-2%':0,'2-4%':0,'4-6%':0,'6-10%':0,'10%+':0};
+  opps.forEach(o=>{const e=o.edge_pct;if(e<2)buckets['0-2%']++;else if(e<4)buckets['2-4%']++;else if(e<6)buckets['4-6%']++;else if(e<10)buckets['6-10%']++;else buckets['10%+']++;});
+  if(edgeChart)edgeChart.destroy();
+  edgeChart=new Chart(document.getElementById('edgeChart').getContext('2d'),{
+    type:'bar',
+    data:{labels:Object.keys(buckets),datasets:[{data:Object.values(buckets),backgroundColor:['rgba(100,116,139,.3)','rgba(245,158,11,.3)','rgba(245,158,11,.5)','rgba(34,197,94,.4)','rgba(34,197,94,.7)'],borderColor:['#64748b','#f59e0b','#f59e0b','#22c55e','#22c55e'],borderWidth:1,borderRadius:3}]},
+    options:{...CD,maintainAspectRatio:false}
+  });
+}
+function setFilter(f,btn){
+  currentFilter=f;
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); renderTable();
+}
+function getFiltered(){
+  if(currentFilter==='high')return allOpps.filter(o=>o.edge_pct>=5);
+  if(currentFilter==='true')return allOpps.filter(o=>o.buy&&o.buy.includes('BOTH'));
+  return allOpps;
+}
+function edgeBadge(e){const c=e>=5?'edge-high':e>=2?'edge-mid':'edge-low';return `<span class="edge-badge ${c}">${e}%</span>`;}
+function renderTable(){
+  const wrap=document.getElementById('tableWrap');
+  const data=getFiltered().slice().reverse().slice(0,100);
+  if(!data.length){
+    wrap.innerHTML='<div class="empty-state"><div style="font-size:32px">📡</div><p>No opportunities logged yet.<br>Run <strong>scanner.py</strong> in the same folder<br>and wait for data to appear here.</p></div>';
+    return;
+  }
+  wrap.innerHTML=`<table><thead><tr><th>Timestamp</th><th>Edge</th><th>Buy</th><th>Ref</th><th>Question (Buy Side)</th><th>Buy $</th><th>Ref $</th><th>Max Size</th></tr></thead><tbody>${
+    data.map(o=>`<tr>
+      <td class="ts-cell">${o.ts?o.ts.replace('T',' ').slice(0,19):'—'}</td>
+      <td>${edgeBadge(o.edge_pct)}</td>
+      <td><span class="platform-tag">${o.buy||'?'}</span></td>
+      <td><span class="platform-tag">${o.sell||'?'}</span></td>
+      <td><span class="question-text" title="${(o.q_buy||'').replace(/"/g,'&quot;')}">${o.q_buy||'—'}</span></td>
+      <td class="price-cell">${o.buy_price!=null?o.buy_price.toFixed(3):'—'}</td>
+      <td class="price-cell">${o.sell_price!=null?o.sell_price.toFixed(3):'—'}</td>
+      <td class="price-cell">$${Math.round(o.max_size||0)}</td>
+    </tr>`).join('')
+  }</tbody></table>`;
+}
+loadAll();
+setInterval(loadAll,30000);
+</script>
+</body>
+</html>
