@@ -179,8 +179,12 @@ or stale quotes (per-venue yes+no below `MIN_BOOK_SUM`) are filtered out before
 matching — otherwise they manufacture phantom arbitrage. Candidate pairs are
 also rejected when the two questions disagree on direction polarity
 (above/below, win/lose, ...) or cite disjoint numbers (different thresholds or
-dates). The public Kalshi feed prices vary by what's currently liquid; an
-authenticated key gives the most complete book.
+dates).
+
+Kalshi markets are pulled from the `/events?with_nested_markets=true` endpoint,
+not the flat `/markets` feed — the latter is dominated by illiquid multi-event
+combos with no real quotes, while the events endpoint surfaces the liquid
+binaries.
 
 Residual limitation: the lexical matcher + polarity/number guards cannot, on
 their own, tell apart same-template different-entity markets (e.g. "Will Trump

@@ -208,46 +208,78 @@ def _kalshi_price(market: dict, ask_key: str, dollars_key: str) -> float:
 # =========================
 # FETCH KALSHI (signed if a key is set, public fallback otherwise)
 # =========================
-def fetch_kalshi(auth: KalshiAuth, limit: int = 200) -> list[Market]:
-    out: list[Market] = []
-    path = f"{KALSHI_PREFIX}/markets"
-    try:
-        headers = {"User-Agent": "arb-scanner/1.0", "Accept": "application/json"}
-        if auth.enabled:
-            headers.update(auth.headers("GET", path))
-        else:
-            print("[Kalshi] No signing key set — using public market data.")
+def _kalshi_question(event: dict, market: dict, multi_outcome: bool) -> str:
+    """Build a matchable question from an event's nested market.
 
-        r = requests.get(
-            f"{KALSHI_HOST}{path}",
-            params={"limit": limit, "status": "open"},
-            headers=headers,
-            timeout=10,
-        )
-        r.raise_for_status()
-        for m in r.json().get("markets", []):
-            try:
-                question = m.get("title", "")
-                if not question or is_multivariate(question):
-                    continue
-                if m.get("mve_collection_ticker"):  # multi-event combo leg, not a binary
-                    continue
-                yes_price = _kalshi_price(m, "yes_ask", "yes_ask_dollars")
-                no_price = _kalshi_price(m, "no_ask", "no_ask_dollars")
-                if not is_tradeable_binary(yes_price, no_price):
-                    continue
-                out.append(
-                    Market(
-                        question=question,
-                        yes_price=yes_price,
-                        no_price=no_price,
-                        source="Kalshi",
-                        market_id=str(m.get("ticker", "")),
-                    )
-                )
-            except (ValueError, TypeError):
-                continue
-        time.sleep(KALSHI_RATE_SLEEP)
+    Single-outcome events use the market title as-is; multi-outcome events
+    (e.g. "Who will win?") append the outcome label so each leg is distinct.
+    """
+    title = (market.get("title") or event.get("title") or "").strip()
+    if multi_outcome:
+        sub = (market.get("yes_sub_title") or "").strip()
+        if sub and sub.lower() not in title.lower():
+            title = f"{title} {sub}"
+    return title
+
+
+def fetch_kalshi(auth: KalshiAuth, limit: int = 200) -> list[Market]:
+    """Fetch open binary markets via the events endpoint.
+
+    The flat /markets feed is dominated by illiquid multi-event combos; the
+    /events endpoint with nested markets surfaces the real, quoted binaries.
+    Pages until `limit` tradeable binaries are collected (capped for latency).
+    """
+    out: list[Market] = []
+    path = f"{KALSHI_PREFIX}/events"
+    cursor: str = ""
+    if not auth.enabled:
+        print("[Kalshi] No signing key set — using public market data.")
+    try:
+        for _ in range(5):  # page cap so one scan stays within the poll budget
+            headers = {"User-Agent": "arb-scanner/1.0", "Accept": "application/json"}
+            if auth.enabled:
+                headers.update(auth.headers("GET", path))  # sign path only (no query)
+            params = {"status": "open", "with_nested_markets": "true", "limit": 200}
+            if cursor:
+                params["cursor"] = cursor
+
+            r = requests.get(f"{KALSHI_HOST}{path}", params=params, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            events = data.get("events", [])
+
+            for event in events:
+                markets = event.get("markets", []) or []
+                multi = len(markets) > 1
+                for m in markets:
+                    if len(out) >= limit:
+                        return out
+                    try:
+                        if m.get("mve_collection_ticker"):  # multi-event combo leg
+                            continue
+                        question = _kalshi_question(event, m, multi)
+                        if not question or is_multivariate(question):
+                            continue
+                        yes_price = _kalshi_price(m, "yes_ask", "yes_ask_dollars")
+                        no_price = _kalshi_price(m, "no_ask", "no_ask_dollars")
+                        if not is_tradeable_binary(yes_price, no_price):
+                            continue
+                        out.append(
+                            Market(
+                                question=question,
+                                yes_price=yes_price,
+                                no_price=no_price,
+                                source="Kalshi",
+                                market_id=str(m.get("ticker", "")),
+                            )
+                        )
+                    except (ValueError, TypeError):
+                        continue
+
+            cursor = data.get("cursor") or ""
+            if not cursor or not events:
+                break
+            time.sleep(KALSHI_RATE_SLEEP)
     except Exception as e:
         eprint(f"[Kalshi ERROR] {e}")
     return out
