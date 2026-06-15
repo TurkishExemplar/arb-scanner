@@ -28,8 +28,15 @@ MODEL_PATH = os.getenv("MODEL_PATH", "model.pkl")
 MIN_TRAIN_ROWS = int(os.getenv("MIN_TRAIN_ROWS", "20"))
 LABELS_CSV = os.getenv("LABELS_CSV", "labels.csv")
 
-FEATURE_NAMES = ["jaccard", "cosine", "len_ratio", "num_overlap"]
+FEATURE_NAMES = ["jaccard", "cosine", "len_ratio", "num_overlap", "entity_overlap"]
 _NUM_RE = re.compile(r"\d+")
+_CAP_RE = re.compile(r"[A-Z][A-Za-z0-9&.'-]{2,}")
+# Capitalized words that are sentence scaffolding, not entities.
+_CAP_STOP = {"will", "who", "would", "should", "does", "are", "the", "what", "when", "which"}
+
+
+def _entities(text: str) -> set[str]:
+    return {t.lower() for t in _CAP_RE.findall(text)} - _CAP_STOP
 
 
 def featurize(pair: "MatchPair") -> list[float]:
@@ -41,7 +48,10 @@ def featurize(pair: "MatchPair") -> list[float]:
         num_overlap = len(nums1 & nums2) / len(nums1 | nums2)
     else:
         num_overlap = 1.0  # neither side cites a number -> not a mismatch signal
-    return [pair.jaccard, pair.cosine, len_ratio, num_overlap]
+    # Proper-noun overlap separates "X wins" from "Y wins" when the rest matches.
+    e1, e2 = _entities(q1), _entities(q2)
+    entity_overlap = len(e1 & e2) / len(e1 | e2) if (e1 or e2) else 1.0
+    return [pair.jaccard, pair.cosine, len_ratio, num_overlap, entity_overlap]
 
 
 class MatchClassifier:

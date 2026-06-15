@@ -22,7 +22,7 @@ import requests
 if TYPE_CHECKING:
     from scanner import Opportunity
 
-from classifier import featurize
+from classifier import FEATURE_NAMES, featurize
 
 # --- files ---
 OPPORTUNITIES_LOG = os.getenv("OPPORTUNITIES_LOG", "opportunities.log")
@@ -312,7 +312,7 @@ def record_prediction(opp: "Opportunity") -> None:
         "poly_id": opp.poly.market_id,
         "kalshi_ticker": opp.kalshi.market_id,
         "direction": opp.direction,
-        "features": dict(zip(["jaccard", "cosine", "len_ratio", "num_overlap"], feats)),
+        "features": dict(zip(FEATURE_NAMES, feats)),
     }
     _append_json(PREDICTIONS_LOG, record)
 

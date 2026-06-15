@@ -168,10 +168,19 @@ Random Forest is trained and the match probability is `>= LIVE_MATCH_PROB`
 
 1. **Jaccard** token overlap is a cheap pre-filter (`> 0.15`).
 2. **TF-IDF cosine** similarity reranks the survivors (`> 0.35`).
-3. The **Random Forest** classifier decides if the pair is truly the same event.
-   Before any labels exist it cold-starts by trusting the two-stage gate; as
-   markets resolve, `labeling.py` auto-writes labels to `labels.csv` and the
-   model is retrained weekly.
+3. The **Random Forest** classifier decides if the pair is truly the same event,
+   from five features: Jaccard, TF-IDF cosine, length ratio, shared-number
+   overlap, and proper-noun **entity overlap** (so "X wins" vs "Y wins" separate
+   even when the rest matches). Before any labels exist it cold-starts by
+   trusting the two-stage gate; as markets resolve, `labeling.py` auto-writes
+   labels to `labels.csv` and the model is retrained weekly.
+
+To filter from the very first run instead of cold-starting wide open, bootstrap
+the classifier once with a starter label set:
+
+```bash
+python seed_labels.py     # writes labels.csv + model.pkl (both git-ignored)
+```
 
 Only clean two-sided binaries are considered. Multi-outcome / grouped markets
 (Kalshi MVE combos, comma-separated "yes A, yes B, ..." titles) and degenerate
@@ -186,8 +195,12 @@ not the flat `/markets` feed — the latter is dominated by illiquid multi-event
 combos with no real quotes, while the events endpoint surfaces the liquid
 binaries.
 
-Residual limitation: the lexical matcher + polarity/number guards cannot, on
-their own, tell apart same-template different-entity markets (e.g. "Will Trump
-win?" vs "Will Biden win?"). The Random Forest learns to reject these as
-auto-labels accumulate; until then the `MATCH_PROB_THRESHOLD` gate and the
-trained-model requirement for live orders keep such pairs out of execution.
+Residual limitation: lexical features can't fully resolve same-template,
+different-*office* look-alikes ("win the Democratic primary" vs "win the
+presidency", with the same candidate named on both sides). The entity feature
+and trained model cut most phantoms, but a few survive. The robust fix for
+production is a semantic verifier — pass the handful of pairs that clear the
+cheap filters to an LLM ("are these the same event?") before alerting. Until
+then, the `MATCH_PROB_THRESHOLD` gate and the trained-model requirement for live
+orders keep unconfirmed pairs out of execution, so residual phantoms are
+dry-run noise, not financial risk.

@@ -20,7 +20,7 @@ LABELS_CSV = os.getenv("LABELS_CSV", "labels.csv")
 MODEL_PATH = os.getenv("MODEL_PATH", "model.pkl")
 RETRAIN_INTERVAL = float(os.getenv("RETRAIN_INTERVAL_SEC", str(7 * 24 * 3600)))  # weekly
 MAX_LOOKUPS_PER_SWEEP = int(os.getenv("MAX_LABEL_LOOKUPS", "25"))  # bound the network work
-FEATURE_NAMES = ["jaccard", "cosine", "len_ratio", "num_overlap"]
+FEATURE_NAMES = ["jaccard", "cosine", "len_ratio", "num_overlap", "entity_overlap"]
 
 
 def _eprint(*args: object) -> None:
